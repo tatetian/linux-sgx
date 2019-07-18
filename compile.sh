@@ -1,4 +1,4 @@
 #!/bin/bash
 make clean
-make
+make -j
 make sdk_install_pkg psw_install_pkg
