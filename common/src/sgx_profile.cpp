@@ -38,7 +38,6 @@
 #include "sgx_profile.h"
 #include "se_time.h"
 #include <string.h>
-using namespace std;
 
 typedef struct _profile_item_t{
     const char *str;  /* tag */
@@ -46,7 +45,7 @@ typedef struct _profile_item_t{
     long long time;   /* current time */
 } profile_item_t;
 
-static vector<profile_item_t> profile_items;
+static std::vector<profile_item_t> profile_items;
 static int alloc_size;
 static int used_size;
 const int MALLOC_SIZE = 1000;
@@ -108,11 +107,11 @@ extern "C" void profile_output(const char* filename)
 {
     int i,j;
 
-    ofstream fs;
+    std::ofstream fs;
     fs.open(filename); /* do not overwritten previous value */
 
-    fs << "freq: " << freq <<endl;
-    fs << "tag" << "," << "start_cycle" << "," << "end_cycle" << endl;
+    fs << "freq: " << freq <<std::endl;
+    fs << "tag" << "," << "start_cycle" << "," << "end_cycle" << std::endl;
 
     for(i=0; i<used_size; i ++)
     {
@@ -126,7 +125,7 @@ extern "C" void profile_output(const char* filename)
                     break;
                 else
                 {
-                    /* cout << "Error: find another start for " << it->str << endl; */
+                    /* std::cout << "Error: find another start for " << it->str << std::endl; */
                     return;
                 }
             }
@@ -134,11 +133,11 @@ extern "C" void profile_output(const char* filename)
 
         if(j == used_size)
         {
-            /* cout << "Error: not find end for " << it->str << endl; */
+            /* std::cout << "Error: not find end for " << it->str << std::endl; */
             return;
         }
 
-        fs << get_prof_fun_name(profile_items[i].str) << "," << profile_items[i].time << "," << profile_items[j].time << endl;
+        fs << get_prof_fun_name(profile_items[i].str) << "," << profile_items[i].time << "," << profile_items[j].time << std::endl;
     }
     profile_items.clear();
     used_size=0;

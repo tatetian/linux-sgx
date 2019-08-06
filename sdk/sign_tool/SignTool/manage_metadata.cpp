@@ -55,7 +55,11 @@
 #include <iomanip>
 #include <fstream>
 
-using namespace tinyxml2;
+using tinyxml2::XML_ERROR_FILE_COULD_NOT_BE_OPENED;
+using tinyxml2::XML_ERROR_FILE_NOT_FOUND;
+using tinyxml2::XML_SUCCESS;
+using tinyxml2::XMLElement;
+using tinyxml2::XMLError;
 
 #define ALIGN_SIZE 0x1000
 
@@ -227,7 +231,7 @@ bool CMetadata::get_time(uint32_t *date)
     if(timeinfo  == NULL)
         return false;
     uint32_t tmp_date = (timeinfo->tm_year+1900)*10000 + (timeinfo->tm_mon+1)*100 + timeinfo->tm_mday;
-    stringstream ss;
+    std::stringstream ss;
     ss<<"0x"<<tmp_date;
     ss>>std::hex>>tmp_date;
     *date = tmp_date;
@@ -278,6 +282,32 @@ bool CMetadata::fill_enclave_css(const xml_parameter_t *para)
         m_metadata->enclave_css.body.attributes.flags |= SGX_FLAGS_EINITTOKEN_KEY;
         m_metadata->enclave_css.body.attribute_mask.flags |= SGX_FLAGS_EINITTOKEN_KEY;
     }
+    if (para[ENABLEKSS].value == 1)
+    {
+        m_metadata->enclave_css.body.attributes.flags |= SGX_FLAGS_KSS;
+        m_metadata->enclave_css.body.attribute_mask.flags |= SGX_FLAGS_KSS;
+    }
+    if (memcpy_s(&(m_metadata->enclave_css.body.isvext_prod_id), SGX_ISVEXT_PROD_ID_SIZE, 
+         &(para[ISVEXTPRODID_L].value), sizeof(para[ISVEXTPRODID_L].value)))
+    {
+        return false;
+    }
+    if (memcpy_s((uint8_t *)&(m_metadata->enclave_css.body.isvext_prod_id) + sizeof(para[ISVEXTPRODID_L].value), 
+        SGX_ISVEXT_PROD_ID_SIZE - sizeof(para[ISVEXTPRODID_L].value), &(para[ISVEXTPRODID_H].value), sizeof(para[ISVEXTPRODID_H].value)))
+    {
+        return false;
+    }
+    if (memcpy_s(&(m_metadata->enclave_css.body.isv_family_id), SGX_ISV_FAMILY_ID_SIZE, 
+        &(para[ISVFAMILYID_L].value), sizeof(para[ISVFAMILYID_L].value)))
+    {
+        return false;
+    }
+    if (memcpy_s((uint8_t *)&(m_metadata->enclave_css.body.isv_family_id) + sizeof(para[ISVFAMILYID_L].value), 
+        SGX_ISV_FAMILY_ID_SIZE - sizeof(para[ISVFAMILYID_L].value), &(para[ISVFAMILYID_H].value), sizeof(para[ISVFAMILYID_H].value)))
+    {
+        return false;
+    }
+
     bin_fmt_t bf = m_parser->get_bin_format();
     if(bf == BF_PE64 || bf == BF_ELF64)
     {
@@ -403,6 +433,14 @@ bool CMetadata::check_xml_parameter(const xml_parameter_t *parameter)
         return false;
     }
 
+    if ((parameter[ISVEXTPRODID_H].value || parameter[ISVEXTPRODID_L].value ||
+        parameter[ISVFAMILYID_H].value || parameter[ISVFAMILYID_L].value) &&
+        parameter[ENABLEKSS].value == 0)
+    {
+        se_trace(SE_TRACE_ERROR, SET_ENABLE_KSS_ERROR);
+        return false;
+    }
+
     m_create_param.heap_init_size = parameter[HEAPINITSIZE].flag ? parameter[HEAPINITSIZE].value : parameter[HEAPMAXSIZE].value;
     m_create_param.heap_min_size = parameter[HEAPMINSIZE].value;
     m_create_param.heap_max_size = parameter[HEAPMAXSIZE].value;
@@ -513,7 +551,7 @@ bool CMetadata::build_layout_table()
     guard_page.entry.id = LAYOUT_ID_GUARD;
     guard_page.entry.page_count = SE_GUARD_PAGE_SIZE >> SE_PAGE_SHIFT;
 
-    vector<layout_t> thread_layouts;
+    std::vector<layout_t> thread_layouts;
     // heap
     layout.entry.id = LAYOUT_ID_HEAP_MIN;
     layout.entry.page_count = (uint32_t)(m_create_param.heap_min_size >> SE_PAGE_SHIFT);
@@ -702,7 +740,7 @@ bool CMetadata::build_layout_table()
     }
     return true;
 }
-bool CMetadata::build_patch_entries(vector<patch_entry_t> &patches)
+bool CMetadata::build_patch_entries(std::vector<patch_entry_t> &patches)
 {
     uint32_t size = (uint32_t)(patches.size() * sizeof(patch_entry_t));
     patch_entry_t *patch_table = (patch_entry_t *) alloc_buffer_from_metadata(size);
@@ -724,7 +762,7 @@ bool CMetadata::build_patch_entries(vector<patch_entry_t> &patches)
 bool CMetadata::build_patch_table()
 {
     const uint8_t *base_addr = (const uint8_t *)m_parser->get_start_addr();
-    vector<patch_entry_t> patches;
+    std::vector<patch_entry_t> patches;
     patch_entry_t patch;
     memset(&patch, 0, sizeof(patch));
 
@@ -764,7 +802,7 @@ bool CMetadata::build_patch_table()
         patch.src = (uint32_t)PTR_DIFF(zero, m_metadata);
         patch.size = (uint32_t)sizeof(elf_hdr->e_shnum);
         patches.push_back(patch);
-        if (patch.size > size) size = patch.size;
+        size = patch.size;
 
         patch.dst = (uint64_t)PTR_DIFF(&elf_hdr->e_shoff, base_addr);
         patch.src = (uint32_t)PTR_DIFF(zero, m_metadata);
@@ -801,7 +839,7 @@ bool CMetadata::build_patch_table()
         patch.src = (uint32_t)PTR_DIFF(zero, m_metadata);
         patch.size = (uint32_t)sizeof(elf_hdr->e_shnum);
         patches.push_back(patch);
-        if (patch.size > size) size = patch.size;
+        size = patch.size;
 
         patch.dst = (uint64_t)PTR_DIFF(&elf_hdr->e_shoff, base_addr);
         patch.src = (uint32_t)PTR_DIFF(zero, m_metadata);
